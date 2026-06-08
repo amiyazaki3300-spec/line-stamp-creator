@@ -273,13 +273,13 @@ input[type=text]:focus,select:focus{border-color:var(--g);}
     <label class="lbl">回転 °</label>
     <div class="srow"><input type="range" id="iRot" min="-180" max="180" value="0" oninput="sv('iRotV',this.value+'°');onSChange()"><span class="sval" id="iRotV">0°</span></div>
 
-    <label class="lbl">背景透過の強さ（閾値）</label>
-    <div class="srow"><input type="range" id="iBgThr" min="5" max="120" value="30" oninput="sv('iBgThrV',this.value);onBgChange()"><span class="sval" id="iBgThrV">30</span></div>
-    <div class="hint">白背景→30前後。大きいほど広く透過</div>
+    <label class="lbl">背景透過の強さ（大きいほど広く削除）</label>
+    <div class="srow"><input type="range" id="iBgThr" min="5" max="150" value="60" oninput="sv('iBgThrV',this.value);onBgChange()"><span class="sval" id="iBgThrV">60</span></div>
+    <div class="hint">✅ 背景は自動で透過されます。残る場合はスライダーを右へ</div>
 
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px">
       <button class="btn btn-w btn-sm" onclick="resetImgLayer()">↩ 画像リセット</button>
-      <button class="btn btn-w btn-sm" onclick="toggleBg()" id="bgBtn">🔄 背景透過ON</button>
+      <button class="btn btn-w btn-sm" onclick="toggleBg()" id="bgBtn">🔄 背景透過 ON</button>
     </div>
 
     <!-- テンプレ重ね -->
@@ -419,7 +419,7 @@ function defSet(){
   return{
     // image layer
     iX:SW/2, iY:SH/2, iScale:1.0, iRot:0,
-    bgRemove:true, bgThreshold:30,
+    bgRemove:true, bgThreshold:60,
     // text layer
     text:'',
     chars:[],
@@ -730,10 +730,21 @@ function removeBg(canvas,thr){
   const ctx=canvas.getContext('2d');
   const w=canvas.width,h=canvas.height;
   const id=ctx.getImageData(0,0,w,h),px=id.data;
-  const pts=[[0,0],[w-1,0],[0,h-1],[w-1,h-1],[w>>1,0],[0,h>>1],[w-1,h>>1],[w>>1,h-1]];
-  const samps=pts.map(([x,y])=>{const i=(y*w+x)*4;return[px[i],px[i+1],px[i+2]];});
+
+  // 四隅＋4辺の中点＋さらに細かくサンプリング（背景色をより正確に特定）
+  const samplePts=[];
+  for(let i=0;i<=4;i++){
+    samplePts.push([Math.floor(w*i/4),0]);
+    samplePts.push([Math.floor(w*i/4),h-1]);
+    samplePts.push([0,Math.floor(h*i/4)]);
+    samplePts.push([w-1,Math.floor(h*i/4)]);
+  }
+  const samps=samplePts.map(([x,y])=>{const i=(y*w+x)*4;return[px[i],px[i+1],px[i+2]];});
+  // 最も多く似た色 = 背景色
   let bg=samps[0],mx=0;
-  samps.forEach(c=>{const m=samps.filter(s=>cd(s,c)<50).length;if(m>mx){mx=m;bg=c;}});
+  samps.forEach(c=>{const m=samps.filter(s=>cd(s,c)<40).length;if(m>mx){mx=m;bg=c;}});
+
+  // フラッドフィル（全辺から）
   const vis=new Uint8Array(w*h);
   const q=new Int32Array(w*h*2); let qh=0,qt=0;
   const enq=(x,y)=>{q[qt++]=x;q[qt++]=y;};
@@ -742,18 +753,23 @@ function removeBg(canvas,thr){
   while(qh<qt){
     const x=q[qh++],y=q[qh++];
     if(x<0||x>=w||y<0||y>=h)continue;
-    const idx=y*w+x; if(vis[idx])continue;
-    const pi=idx*4;
+    const i=y*w+x; if(vis[i])continue;
+    const pi=i*4; if(px[pi+3]===0){vis[i]=1;continue;}
     if(cd([px[pi],px[pi+1],px[pi+2]],bg)>thr)continue;
-    vis[idx]=1; px[pi+3]=0;
+    vis[i]=1; px[pi+3]=0;
     enq(x-1,y);enq(x+1,y);enq(x,y-1);enq(x,y+1);
+    // 斜め方向も除去（隅の取りこぼしを防ぐ）
+    enq(x-1,y-1);enq(x+1,y-1);enq(x-1,y+1);enq(x+1,y+1);
   }
+
+  // エッジのフェザリング（境界をなめらかに）
   for(let y=1;y<h-1;y++){
     for(let x=1;x<w-1;x++){
       if(!vis[y*w+x])continue;
-      const ns=[vis[(y-1)*w+x],vis[(y+1)*w+x],vis[y*w+x-1],vis[y*w+x+1]];
+      const ns=[vis[(y-1)*w+x],vis[(y+1)*w+x],vis[y*w+x-1],vis[y*w+x+1],
+                vis[(y-1)*w+x-1],vis[(y-1)*w+x+1],vis[(y+1)*w+x-1],vis[(y+1)*w+x+1]];
       const sol=ns.filter(v=>!v).length;
-      if(sol>0)px[(y*w+x)*4+3]=Math.round(110*sol/4);
+      if(sol>0)px[(y*w+x)*4+3]=Math.round(80*sol/8);
     }
   }
   ctx.putImageData(id,0,0);
