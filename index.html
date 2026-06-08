@@ -281,6 +281,26 @@ input[type=text]:focus,select:focus{border-color:var(--g);}
       <button class="btn btn-w btn-sm" onclick="resetImgLayer()">↩ 画像リセット</button>
       <button class="btn btn-w btn-sm" onclick="toggleBg()" id="bgBtn">🔄 背景透過ON</button>
     </div>
+
+    <!-- テンプレ重ね -->
+    <div style="margin-top:12px;border-top:1.5px dashed #ddd;padding-top:12px">
+      <div style="font-size:.85rem;font-weight:700;color:#333;margin-bottom:6px">🖼️ 文字テンプレを重ねる</div>
+      <div id="curTmplLabel" style="font-size:.78rem;color:#888;margin-bottom:8px">テンプレ未設定</div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-g btn-sm" style="flex:1" onclick="showTmplOverlayPicker()">テンプレを選ぶ</button>
+        <button class="btn btn-r btn-sm" onclick="removeTmplOverlay()">✕ 外す</button>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:7px">
+        <button class="btn btn-w btn-sm" style="flex:1;font-size:.78rem" onclick="applyTmplOverlayToAll()">📋 全画像に同じテンプレを適用</button>
+      </div>
+    </div>
+
+    <!-- テンプレ選択パネル -->
+    <div id="tmplOverlayPicker" style="display:none;margin-top:10px;background:#f4f9f4;border-radius:10px;padding:10px">
+      <div style="font-size:.82rem;font-weight:600;color:#333;margin-bottom:8px">使うテンプレを選択してください</div>
+      <div id="tmplOverlayList" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button class="btn btn-w btn-sm" style="margin-top:8px" onclick="gi('tmplOverlayPicker').style.display='none'">キャンセル</button>
+    </div>
   </div>
 
   <!-- ── Templates tab ── -->
@@ -405,7 +425,10 @@ function defSet(){
     chars:[],
     tX:SW/2, tY:SH-40,
     tSize:36, tRot:0, tVert:false,
-    strokeColor:'#333333', strokeWidth:3
+    strokeColor:'#333333', strokeWidth:3,
+    // template overlay
+    tmplOverlay:null,  // dataUrl of transparent PNG template
+    tmplName:''
   };
 }
 
@@ -535,6 +558,7 @@ function loadSettingsToUI(idx){
   buildCharStrip(s.chars,s.text);
   selCharIdx=-1;
   gi('charColorRow').style.display='none';
+  updateTmplOverlayLabel();
 }
 
 function saveUIToSettings(idx){
@@ -767,6 +791,13 @@ function renderToCanvas(canvas,idx,w,h,drawHandlesFlag=false){
     ctx.rotate(s.tRot*Math.PI/180);
     drawChars(ctx,s.chars,s,w);
     ctx.restore();
+  }
+
+  // -- Template overlay (transparent PNG) --
+  if(s.tmplOverlay&&s._tmplImg){
+    const ti=s._tmplImg;
+    const scale=Math.min(w/ti.naturalWidth,h/ti.naturalHeight);
+    ctx.drawImage(ti,0,0,ti.naturalWidth*scale,ti.naturalHeight*scale);
   }
 
   // -- Handles (preview only) --
@@ -1399,6 +1430,100 @@ async function deleteImgTmplItem(name){
   await deleteImgTmpl(name);
   renderImgTemplateList();
   showToast('削除しました','ok');
+}
+
+// ═══════════════════════════════════════════════
+// テンプレオーバーレイ
+// ═══════════════════════════════════════════════
+async function showTmplOverlayPicker(){
+  const picker = gi('tmplOverlayPicker');
+  const list   = gi('tmplOverlayList');
+  list.innerHTML = '<div style="font-size:.8rem;color:#aaa;text-align:center;padding:8px">読み込み中...</div>';
+  picker.style.display = 'block';
+
+  const items = await getAllImgTmpls();
+  if(!items.length){
+    list.innerHTML = '<div style="font-size:.8rem;color:#aaa;text-align:center;padding:8px">画像テンプレがありません。<br>テンプレタブから先に登録してください。</div>';
+    return;
+  }
+  list.innerHTML = '';
+  items.sort((a,b)=>b.savedAt-a.savedAt).forEach(item=>{
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;border:1.5px solid #ddd;cursor:pointer';
+    div.innerHTML = `
+      <div style="background:#ccc;border-radius:5px;width:48px;height:40px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">
+        <img src="${item.dataUrl}" style="max-width:48px;max-height:40px;object-fit:contain">
+      </div>
+      <div style="flex:1;font-size:.85rem;font-weight:600;color:#333">${escHtml(item.name)}</div>
+      <button class="btn btn-g btn-sm" style="width:auto;padding:6px 12px;flex-shrink:0">選択</button>`;
+    div.querySelector('button').addEventListener('click', ()=>{
+      applyTmplOverlay(item.name, item.dataUrl);
+      gi('tmplOverlayPicker').style.display='none';
+    });
+    list.appendChild(div);
+  });
+}
+
+function applyTmplOverlay(name, dataUrl){
+  if(curIdx < 0){ showToast('先に画像をアップロードしてください','ng'); return; }
+  const img = new Image();
+  img.onload = function(){
+    sets[curIdx].tmplOverlay = dataUrl;
+    sets[curIdx].tmplName    = name;
+    sets[curIdx]._tmplImg    = img;
+    gi('curTmplLabel').textContent = `✅ テンプレ：${name}`;
+    gi('curTmplLabel').style.color = '#06C755';
+    renderToCanvas();
+    showToast(`「${name}」を重ねました`, 'ok');
+  };
+  img.src = dataUrl;
+}
+
+function removeTmplOverlay(){
+  if(curIdx < 0) return;
+  sets[curIdx].tmplOverlay = null;
+  sets[curIdx].tmplName    = '';
+  sets[curIdx]._tmplImg    = null;
+  gi('curTmplLabel').textContent = 'テンプレ未設定';
+  gi('curTmplLabel').style.color = '#888';
+  renderToCanvas();
+  showToast('テンプレを外しました','ok');
+}
+
+async function applyTmplOverlayToAll(){
+  if(curIdx < 0){ showToast('先に画像をアップロードしてください','ng'); return; }
+  const s = sets[curIdx];
+  if(!s.tmplOverlay){ showToast('先にテンプレを選んでください','ng'); return; }
+  const {tmplOverlay, tmplName} = s;
+
+  // 全スロットに同じテンプレを適用
+  let count = 0;
+  for(let i=0; i<sets.length; i++){
+    if(!imgs[i]) continue;
+    const img = new Image();
+    await new Promise(res=>{ img.onload=res; img.src=tmplOverlay; });
+    sets[i].tmplOverlay = tmplOverlay;
+    sets[i].tmplName    = tmplName;
+    sets[i]._tmplImg    = img;
+    count++;
+  }
+  renderToCanvas();
+  showToast(`${count}枚全部に「${tmplName}」を適用しました`, 'ok');
+}
+
+// 画像選択時にテンプレラベルを更新
+function updateTmplOverlayLabel(){
+  if(curIdx < 0) return;
+  const s = sets[curIdx];
+  const lbl = gi('curTmplLabel');
+  if(!lbl) return;
+  if(s && s.tmplOverlay){
+    lbl.textContent = `✅ テンプレ：${s.tmplName}`;
+    lbl.style.color = '#06C755';
+  } else {
+    lbl.textContent = 'テンプレ未設定';
+    lbl.style.color = '#888';
+  }
 }
 
 // ═══════════════════════════════════════════════
