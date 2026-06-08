@@ -680,6 +680,17 @@ function suggestTexts(){
 // ═══════════════════════════════════════════════
 function getProcessed(idx){
   const s=sets[idx]; if(!imgs[idx])return null;
+  // 画像テンプレ（透過PNG）は一切加工しない
+  if(s.isImgTemplate){
+    const cache=bgCache.get(idx);
+    if(cache&&cache.isImgTemplate)return cache.canvas;
+    const img=imgs[idx].imgEl||imgs[idx];
+    const c=document.createElement('canvas');
+    c.width=img.naturalWidth||img.width; c.height=img.naturalHeight||img.height;
+    c.getContext('2d').drawImage(img,0,0);
+    bgCache.set(idx,{canvas:c,isImgTemplate:true});
+    return c;
+  }
   const cache=bgCache.get(idx);
   if(cache&&cache.threshold===s.bgThreshold&&cache.bgRemove===s.bgRemove)return cache.canvas;
   const img=imgs[idx].imgEl;
@@ -1360,28 +1371,21 @@ async function applyImgTemplate(name){
   });
   if(!item){ showToast('テンプレが見つかりません','ng'); return; }
 
-  // 現在選択中のスタンプスロットに画像として追加
   const img = new Image();
   img.onload = function(){
-    if(curIdx < 0 && imgs.length === 0){
-      showToast('先に画像をアップロードしてください','ng'); return;
-    }
-    // 現在のスロットに透過PNG画像として追加
-    const canvas = document.createElement('canvas');
-    canvas.width  = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-
+    // キャンバスに中間処理せず直接Imageオブジェクトを保持
+    // bgRemoveは絶対false（文字だけPNGなので処理不要）
     const idx = imgs.length;
-    imgs.push(canvas);
+    imgs.push(img);  // Imageオブジェクトをそのまま
     sets.push({
       iX:SW/2, iY:SH/2, iScale:1, iRot:0,
-      bgRemove:false, bgThreshold:30,
+      bgRemove:false, bgThreshold:30,  // 絶対にfalse
       text:'', chars:[],
       tX:SW/2, tY:SH-40, tSize:36, tRot:0, tVert:false,
-      strokeColor:'#333333', strokeWidth:3
+      strokeColor:'#333333', strokeWidth:3,
+      isImgTemplate:true  // テンプレフラグ（bgRemoveボタンを無効化するため）
     });
+    bgCache.delete(idx); // キャッシュクリア
     curIdx = idx;
     renderThumbStrip();
     renderToCanvas();
