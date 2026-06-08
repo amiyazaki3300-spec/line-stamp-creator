@@ -1439,7 +1439,7 @@ async function applyTmplSet(name){
       img.src = url;
     });
   }
-  renderToCanvas();
+  drawCanvas(curIdx);
   updateTmplOverlayLabel();
   showToast(`「${name}」を${applied}枚のスロットに適用しました`,'ok');
   switchTab('edit');
@@ -1522,7 +1522,7 @@ async function applyImgTemplate(name){
     bgCache.delete(idx); // キャッシュクリア
     curIdx = idx;
     renderThumbStrip();
-    renderToCanvas();
+    drawCanvas(curIdx);
     switchTab('edit');
     showToast(`「${name}」を配置しました`, 'ok');
   };
@@ -1576,7 +1576,7 @@ function applyTmplOverlay(name, dataUrl){
     sets[curIdx]._tmplImg    = img;
     gi('curTmplLabel').textContent = `✅ テンプレ：${name}`;
     gi('curTmplLabel').style.color = '#06C755';
-    renderToCanvas();
+    drawCanvas(curIdx);
     showToast(`「${name}」を重ねました`, 'ok');
   };
   img.src = dataUrl;
@@ -1589,7 +1589,7 @@ function removeTmplOverlay(){
   sets[curIdx]._tmplImg    = null;
   gi('curTmplLabel').textContent = 'テンプレ未設定';
   gi('curTmplLabel').style.color = '#888';
-  renderToCanvas();
+  drawCanvas(curIdx);
   showToast('テンプレを外しました','ok');
 }
 
@@ -1610,7 +1610,7 @@ async function applyTmplOverlayToAll(){
     sets[i]._tmplImg    = img;
     count++;
   }
-  renderToCanvas();
+  drawCanvas(curIdx);
   showToast(`${count}枚全部に「${tmplName}」を適用しました`, 'ok');
 }
 
