@@ -316,28 +316,33 @@ input[type=text]:focus,select:focus{border-color:var(--g);}
       <div style="font-size:.8rem;color:#aaa;text-align:center;padding:16px">保存済みテンプレートはありません</div>
     </div>
 
-    <!-- 画像テンプレリスト -->
-    <label class="lbl" style="margin-top:12px">🖼️ 保存済み画像テンプレ</label>
-    <div id="imgTmplList" style="margin-bottom:4px">
-      <div style="font-size:.8rem;color:#aaa;text-align:center;padding:10px">保存済み画像テンプレはありません</div>
+    <!-- ═══ テンプレセット管理 ═══ -->
+    <div style="border-top:1.5px dashed #ddd;margin:12px 0 10px"></div>
+    <div class="ctitle" style="margin-bottom:6px;font-size:.88rem">📦 テンプレセット（40枚1組）</div>
+    <div class="info" style="margin-bottom:10px">40枚の透過PNGを1セットで保存。使うときはセットを選ぶだけで全スロットに自動割り当て。</div>
+
+    <!-- 保存済みセット一覧 -->
+    <div id="tmplSetList">
+      <div style="font-size:.8rem;color:#aaa;text-align:center;padding:10px">保存済みセットはありません</div>
     </div>
 
-    <!-- ═══ 画像テンプレ登録 ═══ -->
-    <div style="border-top:1.5px dashed #ddd;margin:16px 0 12px"></div>
-    <div class="ctitle" style="margin-bottom:8px;font-size:.88rem">🖼️ 文字だけ透過PNGをテンプレとして登録（最大40枚）</div>
-    <div class="info" style="margin-bottom:10px">文字だけの透過PNG画像をアップ → テンプレとして保存。使うときはワンタップで画像レイヤーに配置されます。</div>
-    <div class="upload" id="imgTmplUpload" onclick="gi('imgTmplFileInput').click()" style="padding:14px">
-      <div style="font-size:1.8rem;margin-bottom:4px">🖼️➕</div>
-      <div style="font-size:.88rem;font-weight:600;color:var(--g)">透過PNG画像を選択（複数可・最大40枚）</div>
-      <div style="font-size:.75rem;color:#888;margin-top:4px">タップして選択</div>
-    </div>
-    <input type="file" id="imgTmplFileInput" accept="image/png,image/*" multiple style="display:none">
-    <div id="imgTmplPreviewArea" style="display:none;margin-top:12px">
-      <div style="font-size:.82rem;font-weight:600;color:#333;margin-bottom:8px">📝 テンプレ名を確認・編集してから保存</div>
-      <div id="imgTmplPreviewList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-g" style="flex:1;font-size:.85rem" onclick="saveAllImgTemplates()">💾 すべて保存</button>
-        <button class="btn btn-w btn-sm" onclick="clearImgTmplPreview()">✕ クリア</button>
+    <!-- セット登録 -->
+    <div style="margin-top:12px;background:#f4f9f4;border-radius:10px;padding:10px">
+      <div style="font-size:.82rem;font-weight:700;color:#333;margin-bottom:8px">➕ 新しいセットを登録</div>
+      <label class="lbl">セット名</label>
+      <input type="text" id="tmplSetName" placeholder="例：ねこシリーズ2024">
+      <div class="upload" id="tmplSetUpload" onclick="gi('tmplSetFileInput').click()" style="padding:12px;margin-top:8px">
+        <div style="font-size:1.5rem;margin-bottom:4px">🖼️×40</div>
+        <div style="font-size:.85rem;font-weight:600;color:var(--g)">透過PNG画像を選択（最大40枚・順番通りに）</div>
+        <div style="font-size:.73rem;color:#888;margin-top:3px">ファイル名の順番＝スタンプのスロット番号</div>
+      </div>
+      <input type="file" id="tmplSetFileInput" accept="image/png,image/*" multiple style="display:none">
+
+      <!-- プレビュー -->
+      <div id="tmplSetPreview" style="display:none;margin-top:10px">
+        <div style="font-size:.78rem;color:#555;margin-bottom:6px">選択した画像（<span id="tmplSetCount">0</span>枚）</div>
+        <div id="tmplSetThumbRow" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px"></div>
+        <button class="btn btn-g" onclick="saveTmplSet()">💾 このセットを保存</button>
       </div>
     </div>
 
@@ -1274,110 +1279,192 @@ function saveTemplate(){
 // Import: state
 // ═══════════════════════════════════════════════
 // ═══════════════════════════════════════════════
-// 画像テンプレ登録（透過PNGをそのまま保存）
+// テンプレセット管理（40枚1組）
 // ═══════════════════════════════════════════════
-// IndexedDB: 画像データ保存用（localStorageは容量不足のため）
-const IMG_TMPL_STORE = 'imgTemplates';
-let imgTmplPending = []; // [{name, dataUrl}]
+const TMPL_SET_STORE = 'tmplSets';
 
-function openImgTmplDB(){
-  return new Promise((res, rej) => {
-    const req = indexedDB.open('stampImgTmplDB', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore(IMG_TMPL_STORE, {keyPath:'name'});
-    req.onsuccess = e => res(e.target.result);
-    req.onerror   = e => rej(e);
-  });
-}
-async function saveImgTmplToDB(name, dataUrl){
-  const db = await openImgTmplDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(IMG_TMPL_STORE, 'readwrite');
-    tx.objectStore(IMG_TMPL_STORE).put({name, dataUrl, savedAt: Date.now()});
-    tx.oncomplete = res; tx.onerror = rej;
-  });
-}
-async function getAllImgTmpls(){
-  const db = await openImgTmplDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(IMG_TMPL_STORE, 'readonly');
-    const req = tx.objectStore(IMG_TMPL_STORE).getAll();
+function openTmplSetDB(){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open('stampTmplSetDB',1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(TMPL_SET_STORE,{keyPath:'name'});
     req.onsuccess = e => res(e.target.result);
     req.onerror   = rej;
   });
 }
-async function deleteImgTmpl(name){
-  const db = await openImgTmplDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(IMG_TMPL_STORE, 'readwrite');
-    tx.objectStore(IMG_TMPL_STORE).delete(name);
-    tx.oncomplete = res; tx.onerror = rej;
+async function saveTmplSetToDB(name, dataUrls){
+  const db = await openTmplSetDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(TMPL_SET_STORE,'readwrite');
+    tx.objectStore(TMPL_SET_STORE).put({name, dataUrls, count:dataUrls.length, savedAt:Date.now()});
+    tx.oncomplete=res; tx.onerror=rej;
+  });
+}
+async function getAllTmplSets(){
+  const db = await openTmplSetDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(TMPL_SET_STORE,'readonly');
+    const req = tx.objectStore(TMPL_SET_STORE).getAll();
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = rej;
+  });
+}
+async function deleteTmplSet(name){
+  const db = await openTmplSetDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(TMPL_SET_STORE,'readwrite');
+    tx.objectStore(TMPL_SET_STORE).delete(name);
+    tx.oncomplete=res; tx.onerror=rej;
+  });
+}
+async function getTmplSet(name){
+  const db = await openTmplSetDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(TMPL_SET_STORE,'readonly');
+    const req = tx.objectStore(TMPL_SET_STORE).get(name);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = rej;
   });
 }
 
-gi('imgTmplFileInput').addEventListener('change', function(e){
-  const files = Array.from(e.target.files).slice(0, 40);
+// ── ファイル選択 ──
+let tmplSetPendingUrls = [];
+gi('tmplSetFileInput').addEventListener('change', function(e){
+  const files = Array.from(e.target.files).slice(0,40);
   if(!files.length) return;
-  imgTmplPending = [];
-  const area = gi('imgTmplPreviewArea');
-  const list  = gi('imgTmplPreviewList');
-  list.innerHTML = '';
+  // ファイル名でソート（01.png, 02.png... の順番を保証）
+  files.sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true}));
+  tmplSetPendingUrls = [];
+  const preview = gi('tmplSetPreview');
+  const thumbRow = gi('tmplSetThumbRow');
+  thumbRow.innerHTML = '';
+  gi('tmplSetCount').textContent = files.length;
+  preview.style.display = 'block';
 
   let loaded = 0;
   files.forEach((f, idx) => {
     const reader = new FileReader();
     reader.onload = ev => {
-      const baseName = f.name.replace(/\.[^.]+$/, '');
-      imgTmplPending[idx] = {name: baseName, dataUrl: ev.target.result};
+      tmplSetPendingUrls[idx] = ev.target.result;
+      // サムネイル追加
+      const img = document.createElement('img');
+      img.src = ev.target.result;
+      img.style.cssText = 'width:36px;height:30px;object-fit:contain;background:#ccc;border-radius:4px;border:1px solid #ddd';
+      img.title = `${idx+1}: ${f.name}`;
+      thumbRow.appendChild(img);
       loaded++;
-      if(loaded === files.length){
-        imgTmplPending = imgTmplPending.filter(Boolean);
-        renderImgTmplPreview();
-        area.style.display = 'block';
+      if(loaded===files.length){
+        tmplSetPendingUrls = tmplSetPendingUrls.filter(Boolean);
       }
     };
     reader.readAsDataURL(f);
   });
-  e.target.value = '';
+  e.target.value='';
 });
 
-function renderImgTmplPreview(){
-  const list = gi('imgTmplPreviewList');
-  list.innerHTML = '';
-  imgTmplPending.forEach((item, idx) => {
+// ── セット保存 ──
+async function saveTmplSet(){
+  const name = gi('tmplSetName').value.trim();
+  if(!name){ showToast('セット名を入力してください','ng'); return; }
+  if(!tmplSetPendingUrls.length){ showToast('画像を選択してください','ng'); return; }
+  await saveTmplSetToDB(name, tmplSetPendingUrls);
+  showToast(`「${name}」（${tmplSetPendingUrls.length}枚）を保存しました`,'ok');
+  gi('tmplSetName').value='';
+  gi('tmplSetPreview').style.display='none';
+  gi('tmplSetThumbRow').innerHTML='';
+  tmplSetPendingUrls=[];
+  renderTmplSetList();
+}
+
+// ── セット一覧表示 ──
+async function renderTmplSetList(){
+  const container = gi('tmplSetList');
+  if(!container) return;
+  const sets = await getAllTmplSets();
+  if(!sets.length){
+    container.innerHTML='<div style="font-size:.8rem;color:#aaa;text-align:center;padding:10px">保存済みセットはありません</div>';
+    return;
+  }
+  container.innerHTML='';
+  sets.sort((a,b)=>b.savedAt-a.savedAt).forEach(set=>{
     const div = document.createElement('div');
-    div.style.cssText = 'display:flex;gap:10px;align-items:center;background:#f9f9f9;border:1.5px solid #ddd;border-radius:10px;padding:8px';
-    div.innerHTML = `
-      <div style="background:#ccc url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAO0lEQVQoU2NkYGD4z8BAAoxUKBgFgx8AAP//AwBFAAX/hBB6AAAAAElFTkSuQmCC') repeat;border-radius:6px;width:60px;height:52px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">
-        <img src="${item.dataUrl}" style="max-width:60px;max-height:52px;object-fit:contain">
+    div.style.cssText='background:#f0f7ff;border:1.5px solid #b3d4f5;border-radius:10px;padding:10px;margin-bottom:8px';
+    div.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div>
+          <span style="font-size:.88rem;font-weight:700;color:#1565c0">📦 ${escHtml(set.name)}</span>
+          <span style="font-size:.75rem;color:#888;margin-left:6px">${set.count}枚</span>
+        </div>
+        <button class="btn btn-r btn-sm" style="width:auto;padding:4px 10px;font-size:.72rem" onclick="deleteTmplSetItem('${escHtml(set.name)}')">🗑 削除</button>
       </div>
-      <div style="flex:1">
-        <label style="font-size:.75rem;color:#666;display:block;margin-bottom:3px">テンプレ名</label>
-        <input type="text" value="${escHtml(item.name)}"
-          style="width:100%;padding:7px;border:1.5px solid #ccc;border-radius:7px;font-size:.85rem"
-          oninput="imgTmplPending[${idx}].name=this.value">
-      </div>`;
-    list.appendChild(div);
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px" id="setThumb_${escHtml(set.name).replace(/[^a-z0-9]/gi,'_')}"></div>
+      <button class="btn btn-g btn-sm" style="font-size:.82rem" onclick="applyTmplSet('${escHtml(set.name)}')">▶ このセットを全スロットに適用</button>`;
+    container.appendChild(div);
+    // サムネイル描画
+    const thumbArea = div.querySelector('[id^="setThumb_"]');
+    set.dataUrls.slice(0,10).forEach((url,i)=>{
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.cssText='width:28px;height:24px;object-fit:contain;background:#ccc;border-radius:3px';
+      thumbArea.appendChild(img);
+    });
+    if(set.dataUrls.length>10){
+      const more = document.createElement('span');
+      more.style.cssText='font-size:.7rem;color:#888;align-self:center;padding:0 4px';
+      more.textContent=`+${set.dataUrls.length-10}枚`;
+      thumbArea.appendChild(more);
+    }
   });
 }
 
-async function saveAllImgTemplates(){
-  if(!imgTmplPending.length){ showToast('画像がありません','ng'); return; }
-  let saved = 0;
-  for(const item of imgTmplPending){
-    const name = item.name.trim();
-    if(!name) continue;
-    await saveImgTmplToDB(name, item.dataUrl);
-    saved++;
+// ── セット適用（全スロットに割り当て）──
+async function applyTmplSet(name){
+  const set = await getTmplSet(name);
+  if(!set){ showToast('セットが見つかりません','ng'); return; }
+  if(imgs.length===0){ showToast('先にイラスト画像をアップロードしてください','ng'); return; }
+
+  const count = Math.min(imgs.length, set.dataUrls.length);
+  let applied = 0;
+  for(let i=0; i<count; i++){
+    if(!imgs[i]) continue;
+    const url = set.dataUrls[i];
+    if(!url) continue;
+    await new Promise(res=>{
+      const img = new Image();
+      img.onload = ()=>{
+        sets[i].tmplOverlay = url;
+        sets[i].tmplName    = `${name}[${i+1}]`;
+        sets[i]._tmplImg    = img;
+        applied++; res();
+      };
+      img.src = url;
+    });
   }
-  showToast(`${saved}件の画像テンプレを保存しました`, 'ok');
-  clearImgTmplPreview();
-  renderImgTemplateList();
+  renderToCanvas();
+  updateTmplOverlayLabel();
+  showToast(`「${name}」を${applied}枚のスロットに適用しました`,'ok');
+  switchTab('edit');
 }
 
-function clearImgTmplPreview(){
-  imgTmplPending = [];
-  gi('imgTmplPreviewList').innerHTML = '';
-  gi('imgTmplPreviewArea').style.display = 'none';
+async function deleteTmplSetItem(name){
+  await deleteTmplSet(name);
+  renderTmplSetList();
+  showToast('削除しました','ok');
+}
+
+// 旧関数の互換（renderImgTemplateListはrenderTmplSetListに統合）
+function renderImgTemplateList(){ renderTmplSetList(); }
+
+// 旧getAllImgTmpls互換（テンプレ選択ピッカー用）
+async function getAllImgTmpls(){
+  // セットから全画像をフラットに返す（後方互換）
+  const sets = await getAllTmplSets();
+  const result = [];
+  sets.forEach(set=>{
+    set.dataUrls.forEach((url,i)=>{
+      result.push({name:`${set.name}[${i+1}]`, dataUrl:url, savedAt:set.savedAt});
+    });
+  });
+  return result;
 }
 
 // 画像テンプレリスト表示
