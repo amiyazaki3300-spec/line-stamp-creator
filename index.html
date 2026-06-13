@@ -61,9 +61,44 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;bac
 .checker-bg{background-image:repeating-conic-gradient(#999 0% 25%,#fff 0% 50%);background-size:16px 16px;border-radius:6px;width:100%;display:flex;align-items:center;justify-content:center;min-height:80px;}
 .checker-bg img,.plain-bg img{max-width:100%;max-height:130px;object-fit:contain;display:block;}
 .plain-bg{border-radius:6px;border:1px solid #eee;width:100%;display:flex;align-items:center;justify-content:center;min-height:80px;}
+
+/* エディタモーダル */
+#editor-modal{position:fixed;inset:0;z-index:1000;background:#111;display:none;flex-direction:column;}
+#editor-modal.open{display:flex;}
+.ed-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#222;flex-shrink:0;}
+.ed-bar button{border:none;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer;}
+.ed-back{background:#555;color:#fff;}
+.ed-save{background:#06C755;color:#fff;}
+.ed-brush-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:#1a1a1a;flex-shrink:0;}
+.ed-mode-btn{border:2px solid #555;border-radius:8px;padding:6px 10px;font-size:.78rem;font-weight:700;cursor:pointer;background:#333;color:#fff;flex:1;}
+.ed-mode-btn.active-restore{border-color:#06C755;background:#0a3a1a;color:#06C755;}
+.ed-mode-btn.active-erase{border-color:#e53935;background:#3a0a0a;color:#e53935;}
+.ed-canvas-wrap{flex:1;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;}
+#ed-canvas{touch-action:none;cursor:crosshair;max-width:100%;max-height:100%;}
+.ed-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:.72rem;color:rgba(255,255,255,.5);pointer-events:none;}
 </style>
 </head>
 <body>
+
+<!-- エディタモーダル -->
+<div id="editor-modal">
+  <div class="ed-bar">
+    <button class="ed-back" onclick="closeEditor()">← 戻る</button>
+    <span style="flex:1;color:#ccc;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-title"></span>
+    <button class="ed-save" onclick="saveEditor()">💾 保存して戻る</button>
+  </div>
+  <div class="ed-brush-row">
+    <button class="ed-mode-btn active-restore" id="ed-btn-restore" onclick="setBrushMode('restore')">🖌️ 修復</button>
+    <button class="ed-mode-btn" id="ed-btn-erase" onclick="setBrushMode('erase')">🗑️ 消去</button>
+    <span style="color:#aaa;font-size:.75rem;white-space:nowrap">サイズ</span>
+    <input type="range" id="ed-size" min="5" max="80" value="25" style="flex:1;accent-color:#06C755">
+    <span id="ed-size-v" style="color:#fff;font-size:.78rem;min-width:26px;text-align:right">25</span>
+  </div>
+  <div class="ed-canvas-wrap">
+    <canvas id="ed-canvas"></canvas>
+    <div class="ed-hint">指でなぞって修復・消去できます</div>
+  </div>
+</div>
 
 <div class="hdr">
   <h1>✂️ 背景透過ツール</h1>
@@ -174,22 +209,24 @@ async function runAll() {
     progTxt.textContent = '処理中… ' + (i + 1) + ' / ' + files.length + '枚';
     progFill.style.width = Math.round(i / files.length * 100) + '%';
 
-    var origUrl = URL.createObjectURL(files[i]);
+    var origDataUrl = await fileToDataUrl(files[i]);
     var resultUrl = await processFile(files[i], thr, curMode);
     var fname = files[i].name.replace(/\.[^.]+$/, '') + '_transparent.png';
-    results.push({ fname: fname, dataUrl: resultUrl });
+    results.push({ fname: fname, dataUrl: resultUrl, origDataUrl: origDataUrl });
 
     var row = document.createElement('div');
     row.className = 'preview-row';
+    row.id = 'row-' + i;
     var idx = i;
     row.innerHTML =
       '<div class="preview-header">' +
         '<span class="fname">' + (i+1) + '. ' + esc(files[i].name) + '</span>' +
-        '<button class="dl-btn" onclick="dlOne(' + idx + ')">⬇ 保存</button>' +
+        '<button class="edit-btn" onclick="openEditor(' + idx + ')" style="background:#f57c00;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:6px">✏️ 編集</button>' +
+        '<button class="dl-btn" onclick="dlOne(' + idx + ')" style="background:#1565c0;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:6px">⬇ 保存</button>' +
       '</div>' +
       '<div class="preview-imgs">' +
-        '<div class="preview-side"><div class="side-lbl">元画像</div><div class="plain-bg"><img src="' + origUrl + '"></div></div>' +
-        '<div class="preview-side"><div class="side-lbl">透過後</div><div class="checker-bg"><img src="' + resultUrl + '"></div></div>' +
+        '<div class="preview-side"><div class="side-lbl">元画像</div><div class="plain-bg"><img src="' + origDataUrl + '"></div></div>' +
+        '<div class="preview-side"><div class="side-lbl">透過後</div><div class="checker-bg"><img id="result-img-' + idx + '" src="' + resultUrl + '"></div></div>' +
       '</div>';
     previewList.appendChild(row);
 
@@ -408,6 +445,150 @@ function feather(px, W, H) {
       }
     }
   }
+}
+
+// ファイルをDataURLに変換
+function fileToDataUrl(file) {
+  return new Promise(function(resolve) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.readAsDataURL(file);
+  });
+}
+
+// ========== エディタ ==========
+var edIdx = -1;
+var edBrushMode = 'restore';
+var edOrigData = null;   // 元画像のImageData
+var edWorkData = null;   // 編集中のImageData
+var edCanvas = null;
+var edCtx = null;
+var edScaleX = 1, edScaleY = 1;
+var edPainting = false;
+
+document.getElementById('ed-size').addEventListener('input', function() {
+  document.getElementById('ed-size-v').textContent = this.value;
+});
+
+function setBrushMode(mode) {
+  edBrushMode = mode;
+  document.getElementById('ed-btn-restore').className = 'ed-mode-btn' + (mode === 'restore' ? ' active-restore' : '');
+  document.getElementById('ed-btn-erase').className   = 'ed-mode-btn' + (mode === 'erase'   ? ' active-erase'   : '');
+}
+
+function openEditor(idx) {
+  edIdx = idx;
+  var r = results[idx];
+  if (!r) return;
+
+  edCanvas = document.getElementById('ed-canvas');
+  edCtx = edCanvas.getContext('2d');
+
+  document.getElementById('ed-title').textContent = r.fname;
+  document.getElementById('editor-modal').classList.add('open');
+
+  // 元画像を読み込む
+  var origImg = new Image();
+  origImg.onload = function() {
+    var W = origImg.naturalWidth, H = origImg.naturalHeight;
+    edCanvas.width = W;
+    edCanvas.height = H;
+
+    // 元画像データを保存
+    edCtx.drawImage(origImg, 0, 0);
+    edOrigData = edCtx.getImageData(0, 0, W, H);
+
+    // 処理済み画像を読み込んで作業用データとして使う
+    var procImg = new Image();
+    procImg.onload = function() {
+      edCtx.clearRect(0, 0, W, H);
+      edCtx.drawImage(procImg, 0, 0);
+      edWorkData = edCtx.getImageData(0, 0, W, H);
+      redrawEditor();
+      updateEdScale();
+    };
+    procImg.src = r.dataUrl;
+  };
+  origImg.src = r.origDataUrl;
+}
+
+function updateEdScale() {
+  var wrap = document.querySelector('.ed-canvas-wrap');
+  var ww = wrap.clientWidth, wh = wrap.clientHeight;
+  var cw = edCanvas.width, ch = edCanvas.height;
+  var scale = Math.min(ww / cw, wh / ch, 1);
+  edCanvas.style.width  = Math.round(cw * scale) + 'px';
+  edCanvas.style.height = Math.round(ch * scale) + 'px';
+  edScaleX = cw / (cw * scale);
+  edScaleY = ch / (ch * scale);
+}
+
+function redrawEditor() {
+  edCtx.putImageData(edWorkData, 0, 0);
+}
+
+function getTouchPos(e) {
+  var rect = edCanvas.getBoundingClientRect();
+  var src = e.touches ? e.touches[0] : e;
+  return {
+    x: Math.round((src.clientX - rect.left) * edScaleX),
+    y: Math.round((src.clientY - rect.top)  * edScaleY)
+  };
+}
+
+function paintAt(x, y) {
+  var r = parseInt(document.getElementById('ed-size').value);
+  var W = edCanvas.width, H = edCanvas.height;
+  var px = edWorkData.data;
+  var origPx = edOrigData.data;
+
+  for (var dy = -r; dy <= r; dy++) {
+    for (var dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      var nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+      var i = (ny * W + nx) * 4;
+      // 円の中心からの距離に応じてフェザリング
+      var dist = Math.sqrt(dx*dx + dy*dy);
+      var strength = Math.max(0, 1 - dist / r);
+      if (edBrushMode === 'restore') {
+        // 元の画素に近づける
+        px[i]   = Math.round(px[i]   + (origPx[i]   - px[i])   * strength);
+        px[i+1] = Math.round(px[i+1] + (origPx[i+1] - px[i+1]) * strength);
+        px[i+2] = Math.round(px[i+2] + (origPx[i+2] - px[i+2]) * strength);
+        px[i+3] = Math.round(px[i+3] + (origPx[i+3] - px[i+3]) * strength);
+      } else {
+        // 透明にする
+        px[i+3] = Math.round(px[i+3] * (1 - strength));
+      }
+    }
+  }
+  redrawEditor();
+}
+
+edCanvas.addEventListener('mousedown',  function(e){ edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); });
+edCanvas.addEventListener('mousemove',  function(e){ if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); });
+edCanvas.addEventListener('mouseup',    function(){ edPainting=false; });
+edCanvas.addEventListener('touchstart', function(e){ e.preventDefault(); edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
+edCanvas.addEventListener('touchmove',  function(e){ e.preventDefault(); if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
+edCanvas.addEventListener('touchend',   function(){ edPainting=false; });
+window.addEventListener('resize', function(){ if(edIdx>=0) updateEdScale(); });
+
+function closeEditor() {
+  document.getElementById('editor-modal').classList.remove('open');
+  edIdx = -1; edOrigData = null; edWorkData = null;
+}
+
+function saveEditor() {
+  if (edIdx < 0 || !edWorkData) return;
+  // 最終ImageDataをcanvasに描画してdataURLを取得
+  edCtx.putImageData(edWorkData, 0, 0);
+  var newDataUrl = edCanvas.toDataURL('image/png');
+  results[edIdx].dataUrl = newDataUrl;
+  // プレビューの透過後画像を更新
+  var img = document.getElementById('result-img-' + edIdx);
+  if (img) img.src = newDataUrl;
+  closeEditor();
 }
 
 function esc(s) {
