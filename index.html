@@ -566,13 +566,17 @@ function paintAt(x, y) {
   redrawEditor();
 }
 
-edCanvas.addEventListener('mousedown',  function(e){ edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); });
-edCanvas.addEventListener('mousemove',  function(e){ if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); });
-edCanvas.addEventListener('mouseup',    function(){ edPainting=false; });
-edCanvas.addEventListener('touchstart', function(e){ e.preventDefault(); edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
-edCanvas.addEventListener('touchmove',  function(e){ e.preventDefault(); if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
-edCanvas.addEventListener('touchend',   function(){ edPainting=false; });
-window.addEventListener('resize', function(){ if(edIdx>=0) updateEdScale(); });
+document.addEventListener('DOMContentLoaded', function() {
+  var cv = document.getElementById('ed-canvas');
+  cv.addEventListener('mousedown',  function(e){ edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); });
+  cv.addEventListener('mousemove',  function(e){ if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); });
+  cv.addEventListener('mouseup',    function(){ edPainting=false; });
+  cv.addEventListener('mouseleave', function(){ edPainting=false; });
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); edPainting=true; paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
+  cv.addEventListener('touchmove',  function(e){ e.preventDefault(); if(edPainting) paintAt(getTouchPos(e).x, getTouchPos(e).y); }, {passive:false});
+  cv.addEventListener('touchend',   function(){ edPainting=false; });
+  window.addEventListener('resize', function(){ if(edIdx>=0) updateEdScale(); });
+});
 
 function closeEditor() {
   document.getElementById('editor-modal').classList.remove('open');
