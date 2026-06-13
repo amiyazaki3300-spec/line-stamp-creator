@@ -95,11 +95,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;bac
       <div class="desc">白・薄い背景だけ消す。背景の絵・色はそのまま残る</div>
     </div>
   </div>
-  <label class="lbl">検出感度（大きいほど広く除去）</label>
+  <label class="lbl">検出感度 ／ 低い＝精度高い・消えすぎ防止　高い＝広く除去</label>
   <div class="srow">
-    <input type="range" id="thr" min="10" max="200" value="80" oninput="document.getElementById('thrV').textContent=this.value">
-    <span class="sval" id="thrV">80</span>
+    <input type="range" id="thr" min="5" max="80" value="30" oninput="document.getElementById('thrV').textContent=this.value">
+    <span class="sval" id="thrV">30</span>
   </div>
+  <div style="font-size:.7rem;color:#888;margin-top:4px">消えすぎる場合は左へ下げてください（推奨：20〜35）</div>
 </div>
 
 <div class="card">
@@ -315,6 +316,8 @@ function removeAllBg(px, W, H, thr) {
     tryAdd(cx, cy-1);
   }
 
+  // 被写体内部に漏れ込んだ穴を塞ぐ
+  fillHoles(px, W, H);
   // エッジをなめらかに（半透明のにじみを付ける）
   feather(px, W, H);
 }
@@ -343,6 +346,41 @@ function removeWhiteBg(px, W, H, thr) {
         px[i+3] = alpha;
       }
     }
+  }
+}
+
+// 被写体内部の穴を塞ぐ：透明ピクセルが不透明ピクセルに囲まれていたら復元
+function fillHoles(px, W, H) {
+  for (var iter = 0; iter < 5; iter++) {
+    var changed = false;
+    for (var y = 1; y < H - 1; y++) {
+      for (var x = 1; x < W - 1; x++) {
+        var idx = y * W + x;
+        if (px[idx * 4 + 3] > 0) continue; // 不透明はスキップ
+        // 上下左右の4方向がすべて不透明なら復元
+        var up    = px[((y-1)*W+x)*4+3] > 0 ? 1 : 0;
+        var down  = px[((y+1)*W+x)*4+3] > 0 ? 1 : 0;
+        var left  = px[(y*W+x-1)*4+3] > 0 ? 1 : 0;
+        var right = px[(y*W+x+1)*4+3] > 0 ? 1 : 0;
+        if (up + down + left + right >= 3) {
+          // 元の色は失われているため、隣接する不透明ピクセルの平均色で補完
+          var r=0,g=0,b=0,n=0;
+          var ns=[[y-1,x],[y+1,x],[y,x-1],[y,x+1]];
+          for(var ni=0;ni<ns.length;ni++){
+            var np=(ns[ni][0]*W+ns[ni][1])*4;
+            if(px[np+3]>0){r+=px[np];g+=px[np+1];b+=px[np+2];n++;}
+          }
+          if(n>0){
+            px[idx*4]=Math.round(r/n);
+            px[idx*4+1]=Math.round(g/n);
+            px[idx*4+2]=Math.round(b/n);
+            px[idx*4+3]=255;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (!changed) break;
   }
 }
 
